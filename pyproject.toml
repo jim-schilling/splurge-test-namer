@@ -1,0 +1,34 @@
+[project]
+name = "splurge-test-namer"
+version = "2025.0.0"
+description = "Rename test modules based on sentinel metadata and optional import-following logic"
+readme = "README.md"
+license = "MIT"
+authors = [ { name = "Jim Schilling" } ]
+requires-python = ">=3.10"
+keywords = ["tests", "rename", "sentinel", "naming"]
+
+[project.urls]
+homepage = "https://github.com/jim-schilling/splurge-test-namer"
+
+[project.optional-dependencies]
+dev = [
+	"pytest>=7.0",
+	"pytest-cov",
+    "pytest-mock",
+    "pre-commit",
+	"ruff",
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.ruff]
+line-length = 120
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+exclude = "^tests/"
+

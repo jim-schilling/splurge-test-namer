@@ -1,0 +1,24 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff
+        # use the 'check' subcommand so the '--fix' flag is accepted by the installed ruff CLI
+        entry: ruff check --fix
+        language: system
+        files: "\\.py$"
+
+      - id: mypy
+        name: mypy
+        entry: mypy --ignore-missing-imports
+        language: system
+        files: "\\.py$"
+
+      - id: pytest
+        name: pytest
+        # run pytest as a module so the repository root is on sys.path and local package imports resolve
+        # ignore the repository pytest.ini here (-c /dev/null) and disable pytest-cov to avoid coverage file
+        # creation/combining which can be locked on Windows during pre-commit runs
+        entry: python -m pytest -q -p no:pytest_cov -c /dev/null
+        language: system
+        files: ^tests/
