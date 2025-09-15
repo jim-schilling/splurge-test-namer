@@ -1,0 +1,9 @@
+# Pinned development dependencies for reproducible CI
+pytest==8.2.2
+pytest-cov==4.0.0
+pytest-mock==3.11.0
+pre-commit==3.3.3
+ruff==0.13.0
+black==23.9.1
+isort==5.12.0
+mypy==1.10.0
