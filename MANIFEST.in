@@ -1,0 +1,7 @@
+include README.md
+include LICENSE
+recursive-include tests *
+recursive-include tests/data *
+recursive-include tests/unit *
+recursive-include tests/integration *
+recursive-include tests/e2e *
