@@ -47,6 +47,7 @@ def read_sentinels_from_file(path: Path, sentinel: str) -> list[str]:
         tree = None
     if tree is not None:
         for node in tree.body:
+            # Handle simple assignments: SENTINEL = ['a', 'b']
             if isinstance(node, ast.Assign):
                 for t in node.targets:
                     if isinstance(t, ast.Name) and t.id == sentinel:
@@ -57,9 +58,27 @@ def read_sentinels_from_file(path: Path, sentinel: str) -> list[str]:
                                     out.append(el.value)
                             return out
                         return []
+            # Handle annotated assignments (PEP 526): SENTINEL: list[str] = ['a']
+            if isinstance(node, ast.AnnAssign):
+                target = node.target
+                if isinstance(target, ast.Name) and target.id == sentinel:
+                    # value may be None if only annotation provided; we only
+                    # accept cases with an explicit value that's a list/tuple
+                    val = node.value
+                    if isinstance(val, (ast.List, ast.Tuple)):
+                        out_items: list[str] = []
+                        for el in val.elts:
+                            if isinstance(el, ast.Constant) and isinstance(el.value, str):
+                                out_items.append(el.value)
+                        return out_items
+                    return []
     # fallback: regex
     # allow leading whitespace before the sentinel so indented assignments (e.g. inside blocks)
-    m = re.search(rf"^\s*{sentinel}\s*=\s*\[(.*?)\]", src, re.S | re.M)
+    # Regex fallback: accept optional type annotation between the name and '='
+    # Examples matched:
+    #  DOMAINS = ['a']
+    #  DOMAINS: list[str] = ['a']
+    m = re.search(rf"^\s*{sentinel}(?:\s*:\s*[A-Za-z0-9_\[\],\. ]+)?\s*=\s*\[(.*?)\]", src, re.S | re.M)
     if m:
         items = re.findall(r"['\"](.*?)['\"]", m.group(1))
         return items

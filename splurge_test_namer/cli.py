@@ -13,6 +13,7 @@ Functions:
 
 from pathlib import Path
 import argparse
+import sys
 
 from splurge_test_namer.namer import build_proposals, show_dry_run, apply_renames
 
@@ -77,7 +78,15 @@ def main() -> None:
     Parse command line arguments, build rename proposals, and either print a
     dry-run or apply the proposed renames depending on flags.
     """
-    args = parse_args()
+    try:
+        args = parse_args()
+    except SystemExit:
+        # argparse raises SystemExit for ``-h/--help`` after printing help.
+        # Treat ``--help`` as a graceful exit (return from main) so callers
+        # that import and call ``main()`` don't receive an exception.
+        if any(h in sys.argv for h in ("-h", "--help")):
+            return
+        raise
     root = Path(args.root)
     sentinel = args.sentinel
     # Normalize explicit empty strings to None so callers can pass --root-import ""

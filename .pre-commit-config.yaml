@@ -5,13 +5,17 @@ repos:
         name: ruff
         # use the 'check' subcommand so the '--fix' flag is accepted by the installed ruff CLI
         entry: ruff check --fix
-        language: system
+        # create an isolated venv for the hook so the interpreter and tool
+        # are controlled by pre-commit (avoids accidental system python usage)
+        language: python
+        additional_dependencies: ["ruff"]
         files: "\\.py$"
 
       - id: mypy
         name: mypy
         entry: mypy --ignore-missing-imports
-        language: system
+        language: python
+        additional_dependencies: ["mypy"]
         files: "\\.py$"
 
       - id: pytest
@@ -20,5 +24,6 @@ repos:
         # ignore the repository pytest.ini here (-c /dev/null) and disable pytest-cov to avoid coverage file
         # creation/combining which can be locked on Windows during pre-commit runs
         entry: python -m pytest -q -p no:pytest_cov -c /dev/null
-        language: system
+        language: python
+        additional_dependencies: ["pytest", "pytest-cov"]
         files: ^tests/
