@@ -25,9 +25,74 @@ Usage
 - Apply renames: `python -m splurge_test_namer.cli --root tests --apply`
 - Follow imports under a root package: `python -m splurge_test_namer.cli --root tests --root-import splurge_sql_tool --repo-root /path/to/repo`
 
+Force/overwrite behavior
+------------------------
+By default the tool will not overwrite existing files. To allow overwriting targets when applying proposals, pass `--force` together with `--apply`:
+
+```bash
+python -m splurge_test_namer.cli --root tests --apply --force
+```
++
+
+Running tests locally
+---------------------
+The test suite expects the package to be importable. The recommended workflow is to create and activate a virtual environment, install the package in editable mode with development dependencies, then run pytest. Example commands for common shells on Windows and Unix-like systems:
+
+Windows (PowerShell):
+
+```powershell
+python -m venv .venv
+# Activate the venv in PowerShell
++& .venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -e ".[dev]"
+pytest -q
+```
+
+Windows (Git Bash / bash or WSL):
+
+```bash
+python -m venv .venv
+# Activate the venv in bash-style shells
+source .venv/Scripts/activate
+python -m pip install --upgrade pip
+pip install -e ".[dev]"
+pytest -q
+```
+
+macOS / Linux:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -e ".[dev]"
+pytest -q
+```
+
+Notes:
+- Use the PowerShell activation in PowerShell. Use the `source .venv/Scripts/activate` command in Git Bash on Windows. On macOS/Linux the activation script lives at `.venv/bin/activate`.
+- If you prefer not to install the package, you can run tests with `PYTHONPATH=. pytest -q` as a short-term workaround, though installing in editable mode is recommended.
+
+Pre-commit hooks
+---------------
+We use `pre-commit` to run linters and checks on each commit. After installing dev dependencies, install the hooks and verify them with the commands below:
+
+```bash
+# Install pre-commit if not already installed (inside the venv)
+pip install pre-commit
++
+# Install hooks into your Git hooks
+pre-commit install
++
+# Run hooks against all files to verify configuration
+pre-commit run --all-files
+```
++
++
 New in 2025.0.0
 ---------------
 - Import-following mode: aggregate sentinels from imported modules under a root package when proposing test filenames.
 - CLI flags: `--root-import`, `--repo-root`, `--verbose`.
-
++
 See `docs/README-DETAILS.md` for full API and design notes.

@@ -46,25 +46,37 @@ Notes
 
 Developer setup
 ---------------
-To set up a local development environment and enable pre-commit hooks, run the following (Windows bash example):
+To set up a local development environment and enable pre-commit hooks, create and activate a virtual environment, install the project in editable mode with dev dependencies, then install pre-commit hooks. Use the commands below that match your shell/platform.
 
-1. Create and activate a virtual environment (Windows bash):
+Windows (PowerShell):
+
+```powershell
+python -m venv .venv
+# Activate the venv in PowerShell
+& .venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -e ".[dev]"
+pre-commit install
+```
+
+Windows (Git Bash / bash) or WSL:
 
 ```bash
 python -m venv .venv
+# Activate the venv in bash-style shells on Windows (Git Bash) or in WSL
 source .venv/Scripts/activate
-```
-
-2. Install pinned development dependencies:
-
-```bash
 python -m pip install --upgrade pip
-pip install -r ../requirements-dev.txt
+pip install -e ".[dev]"
+pre-commit install
 ```
 
-3. Install pre-commit hooks:
+macOS / Linux:
 
 ```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -e ".[dev]"
 pre-commit install
 ```
 
@@ -74,11 +86,36 @@ After this, commits will run configured checks (ruff, mypy, pytest) on changed f
 pre-commit run --all-files
 ```
 
-If you prefer to install from the project metadata instead of the pinned file, you can run:
+If you prefer to install from the pinned `requirements-dev.txt` instead of extras, install it with:
 
 ```bash
-pip install -e '.[dev]'
+pip install -r requirements-dev.txt
 ```
+
+Force/overwrite behavior
+------------------------
+By default the renamer will not overwrite existing files when applying proposals. To allow overwrites (for example when you intentionally want to replace files), run with the `--force` flag together with `--apply`:
+
+```bash
+python -m splurge_test_namer.cli --root tests --apply --force
+```
++
+
+Pre-commit hooks
+---------------
+To install and verify pre-commit hooks (if not already installed by the editable install), run:
+
+```bash
+# Install pre-commit into the active environment
+pip install pre-commit
++
+# Install hooks into your Git repository
+pre-commit install
++
+# Optionally run the hooks against all files to validate configuration
+pre-commit run --all-files
+```
++
 
 
 

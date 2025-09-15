@@ -7,6 +7,7 @@ Usage:
 If the GITHUB_OUTPUT env var is present, the script will append
 coverage_percent=<value> to that file so GitHub Actions steps can read it.
 """
+
 from __future__ import annotations
 
 import json

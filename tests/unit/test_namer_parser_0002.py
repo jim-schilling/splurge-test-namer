@@ -1,4 +1,3 @@
-
 from splurge_test_namer.parser import find_imports_in_file, read_sentinels_from_file
 from splurge_test_namer.namer import build_proposals
 
