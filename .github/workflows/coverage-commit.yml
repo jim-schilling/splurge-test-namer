@@ -13,6 +13,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -52,7 +55,33 @@ jobs:
           fi
           mkdir -p .github/badges
           jq -n --arg label "coverage" --arg message "$msg" --arg color "$color" '{schemaVersion:1, label:$label, message:$message, color:$color}' > .github/badges/coverage.json
-      - name: Create PR with updated badge
+
+      - name: Commit and push badge to main (try)
+        id: try-push
+        run: |
+          set -euo pipefail
+          pct=${{ steps.coverage.outputs.coverage_percent }}
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/badges/coverage.json || true
+          # if no changes staged, nothing to do
+          if git diff --staged --quiet; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "pushed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          git commit -m "ci: update coverage badge to ${pct}% [skip ci]" || true
+          # Try to push directly to main. If push fails (branch protection), record pushed=false
+          if git push origin HEAD:main; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "pushed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "pushed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create PR with updated badge (fallback)
+        if: steps.try-push.outputs.pushed != 'true' && steps.try-push.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
