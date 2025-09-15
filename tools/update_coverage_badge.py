@@ -53,11 +53,27 @@ def write_badge(out_path: Path, pct: Optional[float]):
 
 
 def write_github_output(pct: Optional[float]):
-    github_out = Path(os.environ.get("GITHUB_OUTPUT", ""))
-    if github_out and github_out.exists():
-        val = "unknown" if pct is None else f"{pct:.2f}"
+    """If running in GitHub Actions, append the coverage_percent to GITHUB_OUTPUT.
+
+    Only writes when the GITHUB_OUTPUT environment variable is explicitly set. This
+    avoids attempts to open the repository root (``'.'``) as a file when running
+    the script locally or in tests.
+
+    Args:
+        pct: coverage percent as a float (0.0-100.0)
+    """
+    github_output_env = os.environ.get("GITHUB_OUTPUT")
+    if not github_output_env:
+        return
+
+    github_out = Path(github_output_env)
+    try:
+        # Append in text mode; best-effort only.
         with github_out.open("a") as fh:
-            fh.write(f"coverage_percent={val}\n")
+            fh.write(f"coverage_percent={pct:.2f}\n")
+    except Exception:
+        # Never fail the script due to inability to write GITHUB_OUTPUT
+        return
 
 
 def main(argv: list[str]) -> int:
