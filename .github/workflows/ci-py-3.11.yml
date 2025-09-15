@@ -1,0 +1,13 @@
+name: Python CI (3.11)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  call-reusable:
+    uses: ./.github/workflows/ci-reusable.yml
+    with:
+      python-version: '3.11'

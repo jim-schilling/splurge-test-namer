@@ -40,13 +40,16 @@ jobs:
         run: |
           pre-commit run --all-files || true
       - name: Run tests with coverage
-        run: python -m pytest -q
-      - name: Upload coverage report
+        run: |
+          python -m pytest -q --cov=splurge_test_namer --cov-report=xml:coverage.xml --cov-report=html:htmlcov
+      - name: Upload coverage artifacts
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report-${{ matrix.python-version }}
-          path: .
+          path: |
+            coverage.xml
+            htmlcov
 
   test-feature:
     if: github.ref != 'refs/heads/main'
@@ -81,10 +84,13 @@ jobs:
         run: |
           pre-commit run --all-files || true
       - name: Run tests with coverage
-        run: python -m pytest -q
-      - name: Upload coverage report
+        run: |
+          python -m pytest -q --cov=splurge_test_namer --cov-report=xml:coverage.xml --cov-report=html:htmlcov
+      - name: Upload coverage artifacts
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report-${{ matrix.python-version }}
-          path: .
+          path: |
+            coverage.xml
+            htmlcov
