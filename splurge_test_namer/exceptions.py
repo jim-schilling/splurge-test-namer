@@ -1,5 +1,12 @@
-"""exceptions.py
-Custom domain-specific exceptions for splurge_test_namer."""
+"""Custom domain-specific exceptions for splurge_test_namer.
+
+This module defines expressive exception types used across the package so
+consumers can catch specific error classes for file IO, renaming, and
+sentinel parsing failures.
+
+Copyright (c) 2025 Jim Schilling
+License: MIT
+"""
 
 
 class SplurgeTestNamerError(Exception):

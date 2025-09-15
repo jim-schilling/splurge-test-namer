@@ -1,4 +1,3 @@
-
 from splurge_test_namer.parser import aggregate_sentinels_for_test
 from splurge_test_namer.util_helpers import resolve_module_to_paths
 

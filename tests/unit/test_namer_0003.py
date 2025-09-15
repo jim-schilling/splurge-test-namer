@@ -1,33 +1,34 @@
+from pathlib import Path
 
-from splurge_test_namer.namer import slug_sentinel_list, build_proposals
-
-
-def test_slug_sentinel_list_various():
-    assert slug_sentinel_list(["Core", "SQL-Utils"]) == "core_sql_utils"
-    assert slug_sentinel_list(["__weird__", "--name--"]) == "weird_name"
-    assert slug_sentinel_list([]) == "misc"
+from splurge_test_namer.namer import apply_renames
 
 
-def test_build_proposals_groups_and_sequencing(tmp_path):
-    tests_dir = tmp_path / "tests"
-    tests_dir.mkdir()
+def test_apply_renames_basic(tmp_path: Path) -> None:
+    a = tmp_path / "test_one.py"
+    b = tmp_path / "test_two.py"
+    a.write_text("x = 1")
 
-    a = tests_dir / "test_a.py"
-    b = tests_dir / "test_b.py"
-    c = tests_dir / "test_c.py"
-    # two files with same domain, one with another
-    a.write_text("DOMAINS = ['alpha']\n")
-    b.write_text("DOMAINS = ['alpha']\n")
-    c.write_text("DOMAINS = ['beta']\n")
+    proposals = [(a, b)]
+    apply_renames(proposals)
 
-    proposals = build_proposals(tests_dir, "DOMAINS")
-    # should produce three proposals
-    assert len(proposals) == 3
-    # group prefixes
-    names = [p.name for _, p in proposals]
-    assert any(n.startswith("test_alpha_") for n in names)
-    assert any(n.startswith("test_beta_") for n in names)
-    # alpha group should have two sequential numbers 0001 and 0002
-    alpha_names = sorted([n for n in names if n.startswith("test_alpha_")])
-    assert alpha_names[0].endswith("0001.py")
-    assert alpha_names[1].endswith("0002.py")
+    assert not a.exists()
+    assert b.exists()
+
+
+def test_apply_renames_collision(tmp_path: Path) -> None:
+    a = tmp_path / "test_one.py"
+    b = tmp_path / "test_two.py"
+    c = tmp_path / "other.py"
+    a.write_text("x = 1")
+    c.write_text("y = 2")
+
+    # create a target that exists but is not being renamed
+    b.write_text("z = 3")
+
+    proposals = [(a, b)]
+    try:
+        apply_renames(proposals)
+        raised = False
+    except Exception:
+        raised = True
+    assert raised

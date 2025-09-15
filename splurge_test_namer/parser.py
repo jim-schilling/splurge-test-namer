@@ -1,18 +1,42 @@
-"""parser.py
-Sentinel extraction logic for test renamer tool."""
+"""Sentinel extraction and import scanning utilities.
+
+This module provides helpers to read module-level sentinel lists and to
+find imports inside test modules so sentinels can be aggregated from
+imported code under a project root.
+
+Copyright (c) 2025 Jim Schilling
+License: MIT
+"""
 
 import ast
 import re
 from pathlib import Path
 from splurge_test_namer.util_helpers import safe_file_reader, resolve_module_to_paths
 from splurge_test_namer.exceptions import FileReadError, SentinelReadError
-from typing import Set, List
+from typing import Set, Optional
 
 DOMAINS = ["parser"]
 
 
-def read_sentinels_from_file(path: Path, sentinel: str) -> List[str]:
-    """Return the module-level <sentinel> as a list of strings, or empty list. Raises SentinelReadError on file read error."""
+def read_sentinels_from_file(path: Path, sentinel: str) -> list[str]:
+    """Extract a module-level sentinel list from a Python source file.
+
+    The function first tries to parse the module AST to find a top-level
+    assignment named ``sentinel`` with a list or tuple of string constants.
+    If AST parsing fails or no assignment is found, a permissive regex
+    fallback is used to locate a bracketed list in the source.
+
+    Args:
+        path: Filesystem path to the Python module.
+        sentinel: Variable name to search for (e.g. "DOMAINS").
+
+    Returns:
+        A list of string values found in the sentinel assignment, or an
+        empty list if none were found.
+
+    Raises:
+        SentinelReadError: If reading the file contents fails.
+    """
     try:
         src = safe_file_reader(path)
     except FileReadError as e:
@@ -42,7 +66,7 @@ def read_sentinels_from_file(path: Path, sentinel: str) -> List[str]:
     return []
 
 
-def find_imports_in_file(path: Path, root_import: str) -> Set[str]:
+def find_imports_in_file(path: Path, root_import: str, repo_root: Optional[Path] = None) -> Set[str]:
     """Return dotted module names imported in `path` that start with `root_import`.
 
     Handles `import X`, `import X as Y`, `from X import Y`, and `from X.Y import Z`.
@@ -58,6 +82,14 @@ def find_imports_in_file(path: Path, root_import: str) -> Set[str]:
     except Exception:
         return set()
     found: Set[str] = set()
+    # Determine base module name for relative import resolution if repo_root provided
+    base_module: Optional[str] = None
+    try:
+        if repo_root is not None and path.is_relative_to(repo_root):
+            rel = path.relative_to(repo_root).with_suffix("")
+            base_module = ".".join(rel.parts)
+    except Exception:
+        base_module = None
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -69,20 +101,77 @@ def find_imports_in_file(path: Path, root_import: str) -> Set[str]:
                 mod = node.module
                 # if level > 0, it's a relative import; skip
                 if node.level and node.level > 0:
-                    continue
-                if mod.startswith(root_import):
-                    found.add(mod)
+                    # Resolve relative import against the base module if available
+                    if base_module is None:
+                        continue
+                    base_parts = base_module.split(".")
+                    # climb up `level` parts
+                    if node.level > len(base_parts):
+                        continue
+                    parent = ".".join(base_parts[: -node.level])
+                    if node.module:
+                        # from ..mod import name -> parent.mod and parent.mod.name
+                        full_mod = f"{parent}.{node.module}" if parent else node.module
+                    else:
+                        # from .. import name -> parent
+                        full_mod = parent
+                    if full_mod and full_mod.startswith(root_import):
+                        found.add(full_mod)
+                    for alias in node.names:
+                        if alias.name == "*":
+                            # Expand star imports by listing submodules under the
+                            # package directory when repo_root is available.
+                            if repo_root is not None:
+                                try:
+                                    pkg_dir = repo_root.joinpath(*mod.split("."))
+                                    if pkg_dir.exists() and pkg_dir.is_dir():
+                                        for child in pkg_dir.iterdir():
+                                            if child.suffix == ".py" and child.name != "__init__.py":
+                                                candidate = f"{mod}.{child.stem}"
+                                                if candidate.startswith(root_import):
+                                                    found.add(candidate)
+                                except Exception:
+                                    pass
+                            # also keep the module itself so __init__ can be inspected
+                            found.add(mod)
+                            continue
+                        candidate = f"{full_mod}.{alias.name}" if full_mod else alias.name
+                        if candidate.startswith(root_import):
+                            found.add(candidate)
+                else:
+                    # Add the explicit module (e.g. 'pkg.sub') if it matches
+                    if mod.startswith(root_import):
+                        found.add(mod)
+                    # Also handle 'from pkg import submodule' -> record 'pkg.submodule'
+                    for alias in node.names:
+                        if alias.name == "*":
+                            if repo_root is not None:
+                                try:
+                                    pkg_dir = repo_root.joinpath(*mod.split("."))
+                                    if pkg_dir.exists() and pkg_dir.is_dir():
+                                        for child in pkg_dir.iterdir():
+                                            if child.suffix == ".py" and child.name != "__init__.py":
+                                                candidate = f"{mod}.{child.stem}"
+                                                if candidate.startswith(root_import):
+                                                    found.add(candidate)
+                                except Exception:
+                                    pass
+                            found.add(mod)
+                            continue
+                        candidate = f"{mod}.{alias.name}"
+                        if candidate.startswith(root_import):
+                            found.add(candidate)
     return found
 
 
 def aggregate_sentinels_for_test(
     test_path: Path, root_import: str, repo_root: Path, sentinel_name: str = "DOMAINS"
-) -> List[str]:
+) -> list[str]:
     """Aggregate sentinel lists from modules imported by `test_path` under `root_import`.
 
     Returns a sorted list of unique sentinel strings.
     """
-    imports = find_imports_in_file(test_path, root_import)
+    imports = find_imports_in_file(test_path, root_import, repo_root)
     sentinels: Set[str] = set()
     for mod in sorted(imports):
         paths = resolve_module_to_paths(mod, repo_root)
