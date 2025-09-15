@@ -30,31 +30,7 @@ jobs:
       - name: Compute coverage percent
         id: coverage
         run: |
-          python - <<'PY'
-            import os
-            from pathlib import Path
-            import xml.etree.ElementTree as ET
-
-            covfile = Path('coverage.xml')
-            out = 'unknown'
-            if covfile.exists():
-                try:
-                    tree = ET.parse(covfile)
-                    root = tree.getroot()
-                    line_rate = root.attrib.get('line-rate')
-                    if line_rate is not None:
-                        pct = float(line_rate) * 100.0
-                        out = f"{pct:.2f}"
-                except Exception:
-                    out = 'unknown'
-            github_out = os.environ.get('GITHUB_OUTPUT')
-            if github_out:
-                with open(github_out, 'a') as fh:
-                    fh.write(f"coverage_percent={out}\n")
-            else:
-                # fallback for local debugging
-                print(f"coverage_percent={out}")
-          PY
+          python tools/update_coverage_badge.py coverage.xml .github/badges/coverage.json
       - name: Update badge JSON
         run: |
           pct=${{ steps.coverage.outputs.coverage_percent }}
