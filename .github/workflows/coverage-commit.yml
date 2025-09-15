@@ -30,18 +30,28 @@ jobs:
       - name: Compute coverage percent
         id: coverage
         run: |
-          if [ -f coverage.xml ]; then
-            # extract line-rate
-            pct=$(xmllint --xpath 'string(/coverage/@line-rate)' coverage.xml || true)
-            if [ -n "$pct" ]; then
-              pct100=$(awk -v v="$pct" 'BEGIN{printf("%.2f", v*100)}')
-              echo "coverage_percent=$pct100" >> $GITHUB_OUTPUT
-            else
-              echo "coverage_percent=unknown" >> $GITHUB_OUTPUT
-            fi
-          else
-            echo "coverage_percent=unknown" >> $GITHUB_OUTPUT
-          fi
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          covfile = Path('coverage.xml')
+          out = 'unknown'
+          if covfile.exists():
+              try:
+                  tree = ET.parse(covfile)
+                  root = tree.getroot()
+                  line_rate = root.attrib.get('line-rate')
+                  if line_rate is not None:
+                      pct = float(line_rate) * 100.0
+                      out = f"{pct:.2f}"
+              except Exception:
+                  out = 'unknown'
+          # write to GITHUB_OUTPUT
+          print(f"coverage_percent={out}")
+          with open(sys.argv[1], 'a') as fh:
+              fh.write(f"coverage_percent={out}\n")
+          PY $GITHUB_OUTPUT
       - name: Update badge JSON
         run: |
           pct=${{ steps.coverage.outputs.coverage_percent }}
