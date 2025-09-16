@@ -16,11 +16,14 @@ from typing import Set, Optional
 
 from splurge_test_namer.util_helpers import (
     safe_file_reader,
+    resolve_module_to_paths,
     resolve_module_to_paths_with_member_fallback,
 )
 from splurge_test_namer.exceptions import FileReadError, SentinelReadError
 
 DOMAINS = ["parser"]
+
+__all__ = ["resolve_module_to_paths"]
 
 
 def _eval_constant_string_binop(node: ast.AST, const_map: Optional[dict[str, str]] = None) -> Optional[str]:
