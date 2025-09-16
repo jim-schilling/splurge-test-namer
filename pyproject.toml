@@ -8,6 +8,14 @@ authors = [ { name = "Jim Schilling" } ]
 requires-python = ">=3.10"
 keywords = ["tests", "rename", "sentinel", "naming"]
 
+classifiers = [
+	"Development Status :: 4 - Beta",
+	"Programming Language :: Python :: 3",
+	"Programming Language :: Python :: 3.10",
+	"Programming Language :: Python :: 3.11",
+	"Programming Language :: Python :: 3.12",
+]
+
 [project.urls]
 homepage = "https://github.com/jim-schilling/splurge-test-namer"
 
@@ -37,5 +45,7 @@ ignore_missing_imports = true
 exclude = "^tests/"
 
 [tool.setuptools.packages.find]
-exclude = ["tmp_scan"]
+where = ["."]
+include = ["splurge_test_namer*"]
+exclude = ["tmp_scan", "tests", "tests.*", "tools", "tools.*"]
 
