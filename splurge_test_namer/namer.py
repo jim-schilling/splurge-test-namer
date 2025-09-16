@@ -30,7 +30,12 @@ def slug_sentinel_list(sentinels: list[str]) -> str:
     Returns:
         A sanitized single-word slug suitable for filenames.
     """
+    # Normalize: trim, lowercase, join with underscore. Convert spaces and
+    # dashes to underscores and replace any non-alphanumeric characters
+    # with underscores. Collapse repeated underscores and trim edges.
     joined = "_".join(d.strip().lower() for d in sentinels if d)
+    # convert spaces and dashes to underscores first for determinism
+    joined = re.sub(r"[\s-]+", "_", joined)
     cleaned = re.sub(r"[^a-z0-9_]+", "_", joined)
     cleaned = re.sub(r"_+", "_", cleaned).strip("_")
     if not cleaned:
