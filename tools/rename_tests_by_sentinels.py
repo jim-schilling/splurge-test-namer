@@ -1,7 +1,7 @@
 """Rename test modules based on their <sentinel> metadata.
 
 Usage:
-  python tools/rename_tests_by_sentinels.py [--root tests] [--apply] [--sentinel DOMAINS]
+    python tools/rename_tests_by_sentinels.py [--test-root tests] [--apply] [--sentinel DOMAINS]
 
 Default is a dry-run which prints "original | proposed". When --apply is used
 the script will perform os.rename and print "[original] -> [new]" for each
@@ -126,7 +126,7 @@ def apply_renames(proposals: list[tuple[Path, Path]]) -> None:
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Rename test modules based on <sentinel> metadata")
-    p.add_argument("--root", default="tests", help="Root tests directory to scan")
+    p.add_argument("--test-root", dest="test_root", default="tests", help="Root tests directory to scan")
     p.add_argument("--apply", action="store_true", help="Apply the renames (default is dry-run)")
     p.add_argument("--sentinel", default="DOMAINS", help="Module-level sentinel list to read (default: DOMAINS)")
     return p.parse_args()
@@ -134,7 +134,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    root = Path(args.root)
+    root = Path(args.test_root)
     sentinel = args.sentinel
     if not root.exists():
         print(f"Test root not found: {root}")

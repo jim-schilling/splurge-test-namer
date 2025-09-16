@@ -30,17 +30,41 @@ def parse_args() -> argparse.Namespace:
         description="Rename test modules based on <sentinel> metadata",
         epilog=(
             "Examples:\n"
-            "  Dry run: python -m splurge_test_namer.cli --root tests\n"
-            "  Apply renames: python -m splurge_test_namer.cli --root tests --apply\n"
-            "  Apply and overwrite existing targets: python -m splurge_test_namer.cli --root tests --apply --force"
+            "  Dry run: python -m splurge_test_namer.cli --test-root tests\n"
+            "  Apply renames: python -m splurge_test_namer.cli --test-root tests --apply\n"
+            "  Apply and overwrite existing targets: python -m splurge_test_namer.cli --test-root tests --apply --force"
         ),
     )
-    p.add_argument("--root", default="tests", help="Root tests directory to scan")
+    p.add_argument(
+        "--test-root",
+        dest="test_root",
+        default="tests",
+        help=(
+            "Root tests directory to scan (default: 'tests'). "
+            "This is the filesystem path under which test modules are discovered. "
+            "If you provide --import-root/--repo-root, imports referenced from files under "
+            "this root will be resolved against the repository root to aggregate sentinels."
+        ),
+    )
     p.add_argument("--apply", action="store_true", help="Apply the renames (default is dry-run)")
     p.add_argument("--sentinel", default="DOMAINS", help="Module-level sentinel list to read (default: DOMAINS)")
-    p.add_argument("--root-import", default=None, help="Root import path to follow from tests (optional)")
+    p.add_argument(
+        "--import-root",
+        dest="import_root",
+        default=None,
+        help="Import-root (dotted) path to follow from tests (optional)",
+    )
     p.add_argument("--repo-root", default=None, help="Repository root path to resolve imports (optional)")
-    p.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging (debug)")
+    p.add_argument(
+        "--exclude",
+        default="__pycache__",
+        help=(
+            "Semicolon-delimited list of sub-folder names to exclude from scanning. "
+            "Defaults to '__pycache__'. Example: --exclude 'tests/data;venv'"
+        ),
+    )
+    p.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging (info)")
+    p.add_argument("--debug", action="store_true", help="Enable debug logging (most verbose)")
     p.add_argument("--force", action="store_true", help="Allow overwriting existing files during rename operations")
     return p.parse_args()
 
@@ -87,14 +111,15 @@ def main() -> None:
         if any(h in sys.argv for h in ("-h", "--help")):
             return
         raise
-    root = Path(args.root)
+    root = Path(args.test_root)
     sentinel = args.sentinel
-    # Normalize explicit empty strings to None so callers can pass --root-import ""
-    root_import = args.root_import if args.root_import not in ("", None) else None
+    # Normalize explicit empty strings to None so callers can pass --import-root ""
+    root_import = args.import_root if args.import_root not in ("", None) else None
     repo_root = Path(args.repo_root) if args.repo_root else None
     from splurge_test_namer.util_helpers import configure_logging
 
-    configure_logging(args.verbose)
+    # configure logging: --debug (most verbose) overrides --verbose
+    configure_logging(verbose=args.verbose, debug=args.debug)
 
     # Basic validations and sanitization
     if not root.exists() or not root.is_dir():
@@ -115,7 +140,26 @@ def main() -> None:
         print(f"repo_root not found or not a directory: {repo_root}")
         raise SystemExit(2)
 
-    proposals = build_proposals(root, sentinel, root_import=root_import, repo_root=repo_root)
+    # Normalize excludes: split on ';', trim, ignore empty entries
+    excludes_raw = args.exclude or ""
+    excludes = [e.strip() for e in excludes_raw.split(";") if e.strip()]
+
+    # Call build_proposals in a backward-compatible way: older tests may have
+    # monkeypatched a fake build_proposals that doesn't accept the new
+    # ``excludes`` keyword. Check the callable's signature and only pass
+    # ``excludes`` if it's supported.
+    import inspect
+
+    try:
+        sig = inspect.signature(build_proposals)
+        if "excludes" in sig.parameters:
+            proposals = build_proposals(root, sentinel, root_import=root_import, repo_root=repo_root, excludes=excludes)
+        else:
+            proposals = build_proposals(root, sentinel, root_import=root_import, repo_root=repo_root)
+    except (ValueError, TypeError):
+        # If inspection fails for any reason, fall back to a conservative
+        # call without excludes to preserve compatibility with test doubles.
+        proposals = build_proposals(root, sentinel, root_import=root_import, repo_root=repo_root)
     if not args.apply:
         show_dry_run(proposals)
         print(f"\nProposals: {len(proposals)} (use --apply to perform)")

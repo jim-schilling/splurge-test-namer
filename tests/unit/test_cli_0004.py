@@ -35,7 +35,7 @@ def test_cli_dry_run(tmp_path, capsys, monkeypatch):
     prop = orig.with_name("test_misc_0001.py")
     proposals = [(orig, prop)]
 
-    captured, applied = run_cli_with_args(["--root", str(tmp_path / "tests")], capsys, monkeypatch, proposals)
+    captured, applied = run_cli_with_args(["--test-root", str(tmp_path / "tests")], capsys, monkeypatch, proposals)
     assert "DRY RUN - original | proposed" in captured.out
     assert applied == {}
 
@@ -48,6 +48,6 @@ def test_cli_apply_calls_apply_renames(tmp_path, capsys, monkeypatch):
     proposals = [(orig, prop)]
 
     captured, applied = run_cli_with_args(
-        ["--root", str(tmp_path / "tests"), "--apply"], capsys, monkeypatch, proposals
+        ["--test-root", str(tmp_path / "tests"), "--apply"], capsys, monkeypatch, proposals
     )
     assert applied.get("called") is True

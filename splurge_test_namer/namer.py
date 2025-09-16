@@ -13,6 +13,7 @@ from splurge_test_namer.util_helpers import safe_file_rglob, safe_file_renamer
 from splurge_test_namer.exceptions import FileGlobError, FileRenameError, SplurgeTestNamerError
 import re
 from typing import Optional
+import logging
 
 DOMAINS = ["namer"]
 
@@ -48,6 +49,7 @@ def build_proposals(
     sentinel: str,
     root_import: Optional[str] = None,
     repo_root: Optional[Path] = None,
+    excludes: Optional[list[str]] = None,
 ) -> list[tuple[Path, Path]]:
     """Scan test files and return a list of (original_path, proposed_path).
 
@@ -60,13 +62,25 @@ def build_proposals(
         raise SplurgeTestNamerError(f"Failed to glob test files in {root}") from e
     groups: dict[str, list[Path]] = {}
     mapping: dict[Path, str] = {}
+    exclude_set = {e.lower() for e in (excludes or [])}
     for f in files:
+        # skip helpers directories and any explicitly excluded directory names
         if any(part.lower() == "helpers" for part in f.parts):
+            continue
+        if exclude_set and any(part.lower() in exclude_set for part in f.parts):
             continue
         if not f.name.startswith("test_"):
             continue
         if root_import and repo_root:
             domains = aggregate_sentinels_for_test(f, root_import, repo_root, sentinel)
+            # If aggregation via imports yielded nothing, fall back to reading
+            # the module's own sentinel assignment so in-file DOMAINS are not
+            # silently ignored. This covers cases where tests reference the
+            # import-root but imported modules have no sentinels.
+            logger = logging.getLogger(__name__)
+            if not domains:
+                logger.debug("aggregation returned empty for %s; falling back to in-file sentinel", f)
+                domains = read_sentinels_from_file(f, sentinel)
         else:
             domains = read_sentinels_from_file(f, sentinel)
         prefix = "test_" + slug_sentinel_list(domains)

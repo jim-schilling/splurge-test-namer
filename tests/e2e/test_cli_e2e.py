@@ -45,12 +45,12 @@ def test_e2e_cli_dry_and_apply(tmp_path):
     b.write_text("DOMAINS = ['alpha']\n")
 
     # Dry-run: expect proposals printed
-    code, out, err = run_cli(["--root", str(tests), "--repo-root", str(repo)], cwd=repo)
+    code, out, err = run_cli(["--test-root", str(tests), "--repo-root", str(repo)], cwd=repo)
     assert code == 0
     assert "DRY RUN" in out
 
     # Apply with force
-    code2, out2, err2 = run_cli(["--root", str(tests), "--repo-root", str(repo), "--apply", "--force"], cwd=repo)
+    code2, out2, err2 = run_cli(["--test-root", str(tests), "--repo-root", str(repo), "--apply", "--force"], cwd=repo)
     assert code2 == 0
 
     # verify that target files exist and original files no longer exist

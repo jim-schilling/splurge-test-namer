@@ -32,10 +32,10 @@ Errors and Logging
 
 CLI
 ---
-- `--root`: tests root to scan (default: `tests`)
+-- `--test-root`: tests root to scan (default: `tests`)
 - `--apply`: apply renames (default: dry-run)
 - `--sentinel`: sentinel variable name (default: `DOMAINS`)
-- `--root-import`: root import package to follow (optional)
+-- `--import-root`: import-root package to follow (optional)
 - `--repo-root`: filesystem path to repository root for resolving imports (optional)
 - `-v/--verbose`: enable verbose debug logging
 
@@ -97,7 +97,7 @@ Force/overwrite behavior
 By default the renamer will not overwrite existing files when applying proposals. To allow overwrites (for example when you intentionally want to replace files), run with the `--force` flag together with `--apply`:
 
 ```bash
-python -m splurge_test_namer.cli --root tests --apply --force
+python -m splurge_test_namer.cli --test-root tests --apply --force
 ```
 +
 
