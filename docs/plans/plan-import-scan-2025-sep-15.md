@@ -89,6 +89,6 @@ Notes and next steps
 2. Implement `util_helpers.resolve_module_to_paths`.
 3. Implement `parser.aggregate_sentinels_for_test` using the existing `read_sentinels_from_file`.
 4. Update `namer.build_proposals` to accept `root_import` and `repo_root` and use aggregated sentinels.
-5. Add `--root-import` CLI flag to `cli.py` and update help documentation.
+5. Add `--import-root` CLI flag to `cli.py` and update help documentation.
 
 If you want, I can start implementing step 2 (add import scanner in `parser.py`) and mark that todo `in-progress`.
