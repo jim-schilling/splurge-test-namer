@@ -1,76 +1,72 @@
-from splurge_test_namer.parser import (
-    read_sentinels_from_file,
-    find_imports_in_file,
-    aggregate_sentinels_for_test,
-)
-from splurge_test_namer.exceptions import SentinelReadError
+from pathlib import Path
+
+from splurge_test_namer.parser import find_imports_in_file
 
 
-def test_read_sentinels_non_list_and_mixed_items(tmp_path):
-    f1 = tmp_path / "m1.py"
-    f1.write_text("DOMAINS = 'notalist'\n")
-    assert read_sentinels_from_file(f1, "DOMAINS") == []
-
-    f2 = tmp_path / "m2.py"
-    f2.write_text("DOMAINS = [1, 'ok', None]\n")
-    items = read_sentinels_from_file(f2, "DOMAINS")
-    assert items == ["ok"]
-
-
-def test_find_imports_ast_error_returns_empty(tmp_path):
-    f = tmp_path / "bad.py"
-    f.write_text("def bad:\n")
-    found = find_imports_in_file(f, "pkg")
-    assert found == set()
-
-
-def test_find_imports_relative_without_repo_root(tmp_path):
-    f = tmp_path / "t.py"
-    f.write_text("from .sub import mod\n")
-    found = find_imports_in_file(f, "pkg")
-    assert found == set()
-
-
-def test_find_imports_relative_level_too_deep(tmp_path):
-    repo = tmp_path / "repo"
-    # create a file two levels deep
-    p = repo / "a" / "t.py"
+def _write_and_find(src: str, tmp_path: Path, root_import: str):
+    p = tmp_path / "tests" / "test_dyn.py"
     p.parent.mkdir(parents=True)
-    p.write_text("from ...sub import mod\n")
-    # base_parts length is 2 (a.t) and node.level==3 therefore should skip
-    found = find_imports_in_file(p, "pkg", repo)
-    assert found == set()
+    p.write_text(src)
+    return find_imports_in_file(p, root_import, repo_root=None)
 
 
-def test_find_imports_from_alias(tmp_path):
-    f = tmp_path / "t.py"
-    f.write_text("from pkg import sub as s\n")
-    found = find_imports_in_file(f, "pkg")
-    assert "pkg.sub" in found
+def test_importlib_import_module_literal(tmp_path: Path):
+    src = 'import importlib\nimportlib.import_module("splurge_lazyframe_compare.main")\n'
+    found = _write_and_find(src, tmp_path, "splurge_lazyframe_compare")
+    assert "splurge_lazyframe_compare.main" in found
 
 
-def test_aggregate_handles_sentinelreaderror(monkeypatch, tmp_path):
-    # create a test that imports pkg.mod
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    tests = tmp_path / "tests"
-    tests.mkdir()
-    testf = tests / "test_x.py"
-    testf.write_text("from pkg import mod\n")
+def test_from_importlib_import_module_literal(tmp_path: Path):
+    src = 'from importlib import import_module\nimport_module("splurge_lazyframe_compare.main")\n'
+    found = _write_and_find(src, tmp_path, "splurge_lazyframe_compare")
+    assert "splurge_lazyframe_compare.main" in found
 
-    # monkeypatch resolve_module_to_paths to return a fake path
-    fake_path = repo / "pkg" / "mod.py"
-    fake_path.parent.mkdir(parents=True, exist_ok=True)
-    fake_path.write_text("# content")
 
-    from splurge_test_namer import parser
+def test_dunder_import_literal(tmp_path: Path):
+    src = '__import__("splurge_lazyframe_compare.main")\n'
+    found = _write_and_find(src, tmp_path, "splurge_lazyframe_compare")
+    assert "splurge_lazyframe_compare.main" in found
 
-    monkeypatch.setattr(parser, "resolve_module_to_paths", lambda mod, rr: [fake_path])
 
-    def fake_read(p, s):
-        raise SentinelReadError("boom")
+def test_sourcefileloader_load_module_literal(tmp_path: Path):
+    src = (
+        "import importlib.machinery\n"
+        'loader = importlib.machinery.SourceFileLoader("mod", "/tmp/mod.py")\n'
+        'loader.load_module("splurge_lazyframe_compare.main")\n'
+    )
+    found = _write_and_find(src, tmp_path, "splurge_lazyframe_compare")
+    assert "splurge_lazyframe_compare.main" in found
 
-    monkeypatch.setattr(parser, "read_sentinels_from_file", fake_read)
 
-    got = aggregate_sentinels_for_test(testf, "pkg", repo, "DOMAINS")
-    assert got == []
+def test_dunder_import_name_refers_to_constant(tmp_path: Path):
+    src = """
+NAME = 'splurge_lazyframe_compare.util'
+__import__(NAME)
+"""
+    found = _write_and_find(src, tmp_path, "splurge_lazyframe_compare")
+    assert "splurge_lazyframe_compare.util" in found
+
+
+def test_import_module_binop_concat(tmp_path: Path):
+    # simple concatenation should be resolved by _eval_constant_string_binop
+    src = """
+part1 = 'splurge_lazyframe_compare'
+part2 = '.concat'
+name = part1 + part2
+import importlib
+importlib.import_module(name)
+"""
+    found = _write_and_find(src, tmp_path, "splurge_lazyframe_compare")
+    assert "splurge_lazyframe_compare.concat" in found
+
+
+def test_import_module_joinedstr_constants(tmp_path: Path):
+    # JoinedStr that contains only Constant parts should be resolved
+    # Use a f-string with no expressions so the JoinedStr contains only Constant nodes
+    src = """
+from importlib import import_module
+name = f"splurge_lazyframe_compare.joined"
+import_module(name)
+"""
+    found = _write_and_find(src, tmp_path, "splurge_lazyframe_compare")
+    assert "splurge_lazyframe_compare.joined" in found

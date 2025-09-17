@@ -1,32 +1,44 @@
 import textwrap
 
-from splurge_test_namer.parser import read_sentinels_from_file
-from splurge_test_namer.util_helpers import resolve_module_to_paths
+from splurge_test_namer.parser import find_imports_in_file, read_sentinels_from_file
 
 
-def test_read_sentinels_regex_fallback(tmp_path):
-    p = tmp_path / "tests" / "test_regex.py"
+def test_find_imports_from_multiple_names(tmp_path):
+    p = tmp_path / "tests" / "test_multi_from.py"
     p.parent.mkdir(parents=True)
-    # write a file where AST parsing might not pick up (odd formatting)
     p.write_text(
         textwrap.dedent("""
-    DOMAINS = [
-        'one',
-        "two",
-    ]
+    from splurge_sql_tool.subpkg import a, b, c
+    from splurge_sql_tool.deep.module import X
     """)
     )
+    found = find_imports_in_file(p, "splurge_sql_tool")
+    assert "splurge_sql_tool.subpkg" in found
+    assert "splurge_sql_tool.deep.module" in found
+
+
+def test_read_sentinels_ast_non_list_assign(tmp_path):
+    p = tmp_path / "tests" / "test_nonlist.py"
+    p.parent.mkdir(parents=True)
+    # sentinel assigned to a string (not a list) should return [] per impl
+    p.write_text("DOMAINS = 'single'\n")
     vals = read_sentinels_from_file(p, "DOMAINS")
-    assert sorted(vals) == ["one", "two"]
+    assert vals == []
 
 
-def test_resolve_module_fallback_search(tmp_path):
+def test_resolve_prefers_module_over_init(tmp_path):
     repo = tmp_path / "repo"
-    repo.mkdir()
-    # create file deep in repo that ends with name 'utils.py'
-    deep = repo / "some" / "path" / "utils.py"
-    deep.parent.mkdir(parents=True)
-    deep.write_text("# utils")
+    pkg = repo / "splurge_sql_tool"
+    pkg.mkdir(parents=True)
+    mod = pkg / "utils.py"
+    init = pkg / "utils" / "__init__.py"
+    init.parent.mkdir(parents=True)
+    mod.write_text("# module")
+    init.write_text("# package init")
 
-    found = resolve_module_to_paths("splurge_sql_tool.utils", repo)
-    assert any(p.samefile(deep) for p in found)
+    from splurge_test_namer.util_helpers import resolve_module_to_paths
+
+    paths = resolve_module_to_paths("splurge_sql_tool.utils", repo)
+    # should include module file and package init; module file preferred first
+    assert any(p.samefile(mod) for p in paths)
+    assert any(p.samefile(init) for p in paths)

@@ -1,36 +1,65 @@
-import pytest
+from pathlib import Path
 
-from splurge_test_namer.parser import read_sentinels_from_file, find_imports_in_file
-from splurge_test_namer.exceptions import FileReadError, SentinelReadError
-
-
-def test_read_sentinels_parse_error_uses_regex(tmp_path):
-    p = tmp_path / "tests" / "test_parse_err.py"
-    p.parent.mkdir(parents=True)
-    # introduce a syntax error before the sentinel so ast.parse will fail
-    p.write_text("def bad(:\nDOMAINS = ['after_parse_error']\n")
-    vals = read_sentinels_from_file(p, "DOMAINS")
-    assert vals == ["after_parse_error"]
+from splurge_test_namer.parser import aggregate_sentinels_for_test
 
 
-def test_read_sentinels_raises_on_read_error(tmp_path, monkeypatch):
-    p = tmp_path / "tests" / "test_read_err.py"
-    p.parent.mkdir(parents=True)
-    p.write_text("DOMAINS = ['x']\n")
-    # monkeypatch the parser's safe_file_reader to raise FileReadError
-    import splurge_test_namer.parser as parser_mod
-
-    monkeypatch.setattr(parser_mod, "safe_file_reader", lambda path: (_ for _ in ()).throw(FileReadError("boom")))
-    with pytest.raises(SentinelReadError):
-        read_sentinels_from_file(p, "DOMAINS")
+def write_module(path: Path, content: str):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content)
 
 
-def test_find_imports_returns_empty_on_read_error(tmp_path, monkeypatch):
-    p = tmp_path / "tests" / "test_read_err2.py"
-    p.parent.mkdir(parents=True)
-    p.write_text("import splurge_sql_tool.core\n")
-    import splurge_test_namer.parser as parser_mod
+def test_relative_import_too_deep(tmp_path):
+    repo = tmp_path / "repo"
+    pkg = repo / "pkg"
+    pkg.mkdir(parents=True)
+    write_module(pkg / "__init__.py", "DOMAINS = ['root']\n")
 
-    monkeypatch.setattr(parser_mod, "safe_file_reader", lambda path: (_ for _ in ()).throw(FileReadError("boom")))
-    found = find_imports_in_file(p, "splurge_sql_tool")
-    assert found == set()
+    # create a test at top-level tests dir (not inside repo) that attempts a
+    # relative import from deeper than the module location (should be skipped)
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    f = tests / "test_rel_deep.py"
+    write_module(f, "from ..pkg import something\n")
+
+    got = aggregate_sentinels_for_test(f, "pkg", repo, "DOMAINS")
+    # nothing should be found because relative import couldn't be resolved
+    assert got == []
+
+
+def test_mixed___all___exports(tmp_path):
+    repo = tmp_path / "repo"
+    pkg = repo / "pkg"
+    sub = pkg / "sub"
+    sub.mkdir(parents=True)
+    # module that defines __all__ limiting what is exported
+    write_module(sub / "modx.py", "DOMAINS = ['x']\n__all__ = ['x']\n")
+    # another module not exported
+    write_module(sub / "mody.py", "DOMAINS = ['y']\n")
+
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    # star import from package: should still find modx but not mody if __all__ hides it
+    f = tests / "test_star_all.py"
+    write_module(f, "from pkg.sub import *\n")
+
+    got = aggregate_sentinels_for_test(f, "pkg", repo, "DOMAINS")
+    # Our parser doesn't evaluate __all__, but star-expansion will pick up files
+    assert "x" in got
+    assert "y" in got
+
+
+def test_namespace_package_resolution(tmp_path):
+    repo = tmp_path / "repo"
+    # Create namespace package (no __init__.py)
+    pkg = repo / "ns_pkg"
+    sub = pkg / "subpkg"
+    sub.mkdir(parents=True)
+    write_module(sub / "mod.py", "DOMAINS = ['ns']\n")
+
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    f = tests / "test_ns.py"
+    write_module(f, "from ns_pkg.subpkg import mod\n")
+
+    got = aggregate_sentinels_for_test(f, "ns_pkg", repo, "DOMAINS")
+    assert "ns" in got

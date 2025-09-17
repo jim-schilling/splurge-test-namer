@@ -1,34 +1,31 @@
-import pytest
-
+from splurge_test_namer.parser import find_imports_in_file, read_sentinels_from_file
 from splurge_test_namer.namer import build_proposals
-from splurge_test_namer.exceptions import SplurgeTestNamerError
 
 
-def test_build_proposals_rglob_error(tmp_path, monkeypatch):
-    root = tmp_path / "tests"
-    root.mkdir()
+def test_helpers_directory_is_skipped(tmp_path):
+    root = tmp_path / "root"
+    helpers = root / "helpers"
+    helpers.mkdir(parents=True)
+    t = helpers / "test_helper_file.py"
+    t.write_text("DOMAINS = ['helper']\n")
 
-    # monkeypatch safe_file_rglob to raise
-    # monkeypatch the symbol used by namer (it imports safe_file_rglob into its module)
-    import splurge_test_namer.namer as nm
-
-    from splurge_test_namer.exceptions import FileGlobError
-
-    monkeypatch.setattr(nm, "safe_file_rglob", lambda root, pattern: (_ for _ in ()).throw(FileGlobError("boom")))
-
-    with pytest.raises(SplurgeTestNamerError):
-        build_proposals(root, "DOMAINS")
+    proposals = build_proposals(root, "DOMAINS")
+    # helpers files should be skipped; no proposals
+    assert proposals == []
 
 
-def test_read_sentinels_inside_if_block(tmp_path):
-    p = tmp_path / "tests" / "test_if.py"
+def test_find_imports_empty_file(tmp_path):
+    p = tmp_path / "tests" / "test_empty.py"
     p.parent.mkdir(parents=True)
-    # sentinel defined inside an if block - top-level AST loop won't see it; regex fallback should match
-    p.write_text("""
-if True:
-    DOMAINS = ['inside']
-""")
-    from splurge_test_namer.parser import read_sentinels_from_file
+    p.write_text("")
+    found = find_imports_in_file(p, "splurge_sql_tool")
+    assert found == set()
 
+
+def test_read_sentinels_tuple_assignment(tmp_path):
+    p = tmp_path / "tests" / "test_tuple.py"
+    p.parent.mkdir(parents=True)
+    # sentinel assigned to a tuple should return list of strings
+    p.write_text("DOMAINS = ('one', 'two')\n")
     vals = read_sentinels_from_file(p, "DOMAINS")
-    assert vals == ["inside"]
+    assert sorted(vals) == ["one", "two"]

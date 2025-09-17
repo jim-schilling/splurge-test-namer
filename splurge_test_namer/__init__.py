@@ -12,6 +12,6 @@ Attributes:
 """
 
 __domains__ = ["cli", "e2e", "integration", "misc", "namer", "parser", "regression", "utils"]
-__version__ = "2025.0.0"
+__version__ = "2025.1.0"
 
 __all__ = ["__domains__", "__version__"]

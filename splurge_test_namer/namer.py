@@ -18,12 +18,13 @@ import logging
 DOMAINS = ["namer"]
 
 
-def slug_sentinel_list(sentinels: list[str]) -> str:
+def slug_sentinel_list(sentinels: list[str], fallback: str = "misc") -> str:
     """Create a sanitized slug from a list of sentinel strings.
 
     The slug joins non-empty sentinel strings with underscores, lowercases
     them, replaces non-alphanumeric characters with underscores, and trims
-    repeated underscores. If the result is empty, returns the string "misc".
+    repeated underscores. If the result is empty, returns the provided
+    fallback (normalized) or the string "misc".
 
     Args:
         sentinels: Iterable of candidate sentinel strings.
@@ -31,17 +32,59 @@ def slug_sentinel_list(sentinels: list[str]) -> str:
     Returns:
         A sanitized single-word slug suitable for filenames.
     """
-    # Normalize: trim, lowercase, join with underscore. Convert spaces and
-    # dashes to underscores and replace any non-alphanumeric characters
-    # with underscores. Collapse repeated underscores and trim edges.
-    joined = "_".join(d.strip().lower() for d in sentinels if d)
-    # convert spaces and dashes to underscores first for determinism
-    joined = re.sub(r"[\s-]+", "_", joined)
-    cleaned = re.sub(r"[^a-z0-9_]+", "_", joined)
-    cleaned = re.sub(r"_+", "_", cleaned).strip("_")
-    if not cleaned:
-        return "misc"
-    return cleaned
+    # Preserve token case (tokens are case-sensitive) but sanitize to the
+    # allowed character set [A-Za-z0-9_]. Replace invalid characters with
+    # underscores, collapse multiple underscores, and trim leading/trailing
+    # underscores.
+    tokens: list[str] = []
+    for t in (d for d in sentinels if d):
+        tok = t.strip()
+        # replace spaces/dashes with underscore first
+        tok = re.sub(r"[\s-]+", "_", tok)
+        # replace any disallowed char with underscore (preserve case)
+        tok = re.sub(r"[^A-Za-z0-9_]+", "_", tok)
+        tok = re.sub(r"_+", "_", tok).strip("_")
+        if tok:
+            tokens.append(tok)
+
+    # Normalize fallback similarly to tokens but also ensure a default
+    fb = (fallback or "misc").strip()
+    fb = re.sub(r"[\s-]+", "_", fb)
+    fb = re.sub(r"[^A-Za-z0-9_]+", "_", fb)
+    fb = re.sub(r"_+", "_", fb).strip("_")
+    if not fb:
+        fb = "misc"
+
+    # Validate sanitized token lengths: enforce max 64 characters on the
+    # sanitized form (post-normalization). This prevents long tokens that
+    # only become short after stripping invalid chars from slipping by.
+    max_token_len = 64
+    for tok in tokens:
+        if len(tok) > max_token_len:
+            raise SplurgeTestNamerError(
+                f"Sentinel token too long after sanitization ({len(tok)} > {max_token_len}): {tok!r}"
+            )
+
+    # Validate sanitized fallback length
+    if len(fb) > max_token_len:
+        raise SplurgeTestNamerError(f"Fallback value too long after sanitization ({len(fb)} > {max_token_len}): {fb!r}")
+
+    if not tokens:
+        return fb
+
+    joined = "_".join(tokens)
+
+    # Truncate the aggregated slug to 64 characters;
+    # the overall filename limit is enforced later. Remove trailing
+    # underscores after truncation.
+    max_slug_len = 64
+    if len(joined) > max_slug_len:
+        joined = joined[:max_slug_len].rstrip("_")
+
+    if not joined:
+        return fb
+
+    return joined
 
 
 def build_proposals(
@@ -50,6 +93,8 @@ def build_proposals(
     root_import: Optional[str] = None,
     repo_root: Optional[Path] = None,
     excludes: Optional[list[str]] = None,
+    fallback: str = "misc",
+    prefix: str = "test",
 ) -> list[tuple[Path, Path]]:
     """Scan test files and return a list of (original_path, proposed_path).
 
@@ -60,6 +105,9 @@ def build_proposals(
         files: list[Path] = sorted(safe_file_rglob(root, "*.py"))
     except FileGlobError as e:
         raise SplurgeTestNamerError(f"Failed to glob test files in {root}") from e
+    # Group proposals by file_prefix only so sequence numbers are global
+    # across the provided root. The base name [PREFIX]_[SENTINEL-TOKENS]
+    # must be unique across the test-root to avoid collisions.
     groups: dict[str, list[Path]] = {}
     mapping: dict[Path, str] = {}
     exclude_set = {e.lower() for e in (excludes or [])}
@@ -83,16 +131,30 @@ def build_proposals(
                 domains = read_sentinels_from_file(f, sentinel)
         else:
             domains = read_sentinels_from_file(f, sentinel)
-        prefix = "test_" + slug_sentinel_list(domains)
-        mapping[f] = prefix
-        groups.setdefault(prefix, []).append(f)
+        # Compute prefix for this file and group it. Sequences are assigned
+        # globally per prefix across the entire provided root. This requires
+        # that the base name (prefix + slug) is unique across test-root.
+        file_prefix = f"{prefix}_" + slug_sentinel_list(domains, fallback=fallback)
+        mapping[f] = file_prefix
+        groups.setdefault(file_prefix, []).append(f)
 
     proposals: list[tuple[Path, Path]] = []
-    for prefix, flist in sorted(groups.items()):
+    # Sort by prefix to produce deterministic ordering.
+    for prefix, flist in sorted(groups.items(), key=lambda kv: kv[0]):
         flist_sorted = sorted(flist, key=lambda p: str(p).lower())
         for idx, f in enumerate(flist_sorted, start=1):
             seq = f"{idx:04d}"
             new_name = f"{prefix}_{seq}.py"
+            # sanity check: prevent generating absurdly long filenames
+            if len(new_name) > 240:
+                raise SplurgeTestNamerError(
+                    f"Proposed filename too long ({len(new_name)} > 240): {new_name!r} for original {f}"
+                )
+            # validate proposed name pattern: prefix + '_' + [A-Za-z0-9_]* + .py
+            if not re.match(rf"^{re.escape(prefix)}_[A-Za-z0-9_]*\.py$", new_name):
+                raise SplurgeTestNamerError(
+                    f"Proposed filename does not match allowed pattern: {new_name!r} for original {f}"
+                )
             new_path = f.with_name(new_name)
             proposals.append((f, new_path))
     return proposals

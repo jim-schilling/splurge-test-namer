@@ -1,37 +1,23 @@
-from splurge_test_namer.parser import find_imports_in_file, aggregate_sentinels_for_test
+from pathlib import Path
+
+from splurge_test_namer.parser import find_imports_in_file
 
 
-def test_relative_from_named_alias(tmp_path):
-    # repo/pkg/tests/test.py with 'from .sub import mod' -> should resolve to pkg.tests.sub.mod
+def test_relative_import_resolution(tmp_path: Path):
+    # repo/pkg/sub/__init__.py and repo/pkg/sub/mod.py
     repo = tmp_path / "repo"
-    pkg_tests = repo / "pkg" / "tests"
-    sub = pkg_tests / "sub"
+    sub = repo / "pkg" / "sub"
     sub.mkdir(parents=True)
-    # create the module that will contain the sentinel
-    mod = sub / "mod.py"
-    mod.write_text("DOMAINS = ['rmod']\n")
+    (repo / "pkg" / "__init__.py").write_text("# pkg init\n")
+    (sub / "__init__.py").write_text("DOMAINS = ['SUB']\n")
+    (sub / "mod.py").write_text("DOMAINS = ['MOD']\n")
 
-    testf = pkg_tests / "test_rel_named.py"
-    testf.parent.mkdir(parents=True, exist_ok=True)
-    testf.write_text("from .sub import mod\n")
+    # Create a test file inside repo/pkg/tests/test_rel.py to simulate base module
+    test_dir = repo / "pkg" / "tests"
+    test_dir.mkdir(parents=True)
+    t = test_dir / "test_rel.py"
+    # from ..sub import mod  (level=2 -> climb up two parts from pkg.tests -> pkg)
+    t.write_text("from ..sub import mod\n")
 
-    got = aggregate_sentinels_for_test(testf, "pkg", repo, "DOMAINS")
-    assert "rmod" in got
-
-
-def test_relative_from_star_expansion_custom_root(tmp_path):
-    # Create repo/sub/child.py and a test inside repo/pkg/tests that does 'from ..sub import *'
-    repo = tmp_path / "repo"
-    sub = repo / "sub"
-    sub.mkdir(parents=True)
-    child = sub / "child.py"
-    child.write_text("DOMAINS = ['child']\n")
-
-    pkg_tests = repo / "pkg" / "tests"
-    pkg_tests.mkdir(parents=True)
-    testf = pkg_tests / "test_rel_star.py"
-    testf.write_text("from ..sub import *\n")
-
-    # Use root_import 'sub' so that expanded candidates 'sub.child' match
-    found = find_imports_in_file(testf, "sub", repo)
-    assert any(name.startswith("sub.") for name in found)
+    found = find_imports_in_file(t, "pkg", repo_root=repo)
+    assert "pkg.sub.mod" in found or "pkg.sub" in found
