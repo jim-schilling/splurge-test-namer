@@ -66,6 +66,22 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging (info)")
     p.add_argument("--debug", action="store_true", help="Enable debug logging (most verbose)")
     p.add_argument("--force", action="store_true", help="Allow overwriting existing files during rename operations")
+    p.add_argument(
+        "--fallback",
+        default="misc",
+        help=(
+            "Fallback domain name to use when no sentinel is found. "
+            "Value will be normalized to lower-case snake_case (default: misc)."
+        ),
+    )
+    p.add_argument(
+        "--prefix",
+        default="test",
+        help=(
+            "Prefix to use for generated test filenames (default: 'test'). "
+            "Must start with a letter and contain only letters, digits or underscores; max length 64."
+        ),
+    )
     return p.parse_args()
 
 
@@ -113,6 +129,7 @@ def main() -> None:
         raise
     root = Path(args.test_root)
     sentinel = args.sentinel
+    fallback_raw = args.fallback
     # Normalize explicit empty strings to None so callers can pass --import-root ""
     root_import = args.import_root if args.import_root not in ("", None) else None
     repo_root = Path(args.repo_root) if args.repo_root else None
@@ -140,6 +157,28 @@ def main() -> None:
         print(f"repo_root not found or not a directory: {repo_root}")
         raise SystemExit(2)
 
+    # Normalize and validate fallback name: convert to lower snake_case
+    import re
+
+    def _normalize_fallback(name: str) -> str:
+        s = (name or "").strip().lower()
+        s = re.sub(r"[\s-]+", "_", s)
+        s = re.sub(r"[^a-z0-9_]+", "_", s)
+        s = re.sub(r"_+", "_", s).strip("_")
+        return s or "misc"
+
+    fallback = _normalize_fallback(fallback_raw)
+    if not re.match(r"^[a-z_][a-z0-9_]*$", fallback):
+        print(f"Invalid fallback name after normalization: {fallback}")
+        raise SystemExit(2)
+
+    prefix_raw = args.prefix or "test"
+    # Validate prefix: starts with letter, allowed chars [A-Za-z0-9_], length 1..64
+    if not re.match(r"^[A-Za-z][A-Za-z0-9_]{0,63}$", prefix_raw):
+        print(f"Invalid prefix: {prefix_raw}. Must match ^[A-Za-z][A-Za-z0-9_]*$ and be 1-64 chars long")
+        raise SystemExit(2)
+    prefix = prefix_raw
+
     # Normalize excludes: split on ';', trim, ignore empty entries
     excludes_raw = args.exclude or ""
     excludes = [e.strip() for e in excludes_raw.split(";") if e.strip()]
@@ -152,13 +191,41 @@ def main() -> None:
 
     try:
         sig = inspect.signature(build_proposals)
-        if "excludes" in sig.parameters:
+        # Call build_proposals with explicit keyword args depending on what
+        # the implementation supports to keep typing explicit for mypy.
+        if "excludes" in sig.parameters and "fallback" in sig.parameters and "prefix" in sig.parameters:
+            proposals = build_proposals(
+                root,
+                sentinel,
+                root_import=root_import,
+                repo_root=repo_root,
+                excludes=excludes,
+                fallback=fallback,
+                prefix=prefix,
+            )
+        elif "excludes" in sig.parameters and "fallback" in sig.parameters:
+            proposals = build_proposals(
+                root, sentinel, root_import=root_import, repo_root=repo_root, excludes=excludes, fallback=fallback
+            )
+        elif "excludes" in sig.parameters and "prefix" in sig.parameters:
+            proposals = build_proposals(
+                root, sentinel, root_import=root_import, repo_root=repo_root, excludes=excludes, prefix=prefix
+            )
+        elif "fallback" in sig.parameters and "prefix" in sig.parameters:
+            proposals = build_proposals(
+                root, sentinel, root_import=root_import, repo_root=repo_root, fallback=fallback, prefix=prefix
+            )
+        elif "excludes" in sig.parameters:
             proposals = build_proposals(root, sentinel, root_import=root_import, repo_root=repo_root, excludes=excludes)
+        elif "fallback" in sig.parameters:
+            proposals = build_proposals(root, sentinel, root_import=root_import, repo_root=repo_root, fallback=fallback)
+        elif "prefix" in sig.parameters:
+            proposals = build_proposals(root, sentinel, root_import=root_import, repo_root=repo_root, prefix=prefix)
         else:
             proposals = build_proposals(root, sentinel, root_import=root_import, repo_root=repo_root)
     except (ValueError, TypeError):
         # If inspection fails for any reason, fall back to a conservative
-        # call without excludes to preserve compatibility with test doubles.
+        # call without extras to preserve compatibility with test doubles.
         proposals = build_proposals(root, sentinel, root_import=root_import, repo_root=repo_root)
     if not args.apply:
         show_dry_run(proposals)

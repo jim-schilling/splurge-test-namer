@@ -8,6 +8,8 @@ Copyright (c) 2025 Jim Schilling
 License: MIT
 """
 
+DOMAINS = ["exceptions"]
+
 
 class SplurgeTestNamerError(Exception):
     """Base exception for splurge_test_namer errors."""

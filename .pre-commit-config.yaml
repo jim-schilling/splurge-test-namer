@@ -1,29 +1,27 @@
 repos:
+  # Run hooks using the system interpreter (your activated .venv). Ensure
+  # the tools below are installed in your project venv (see README notes):
+  #   pip install -e '.[dev]'
   - repo: local
     hooks:
       - id: ruff
         name: ruff
-        # use the 'check' subcommand so the '--fix' flag is accepted by the installed ruff CLI
         entry: ruff check --fix
-        # create an isolated venv for the hook so the interpreter and tool
-        # are controlled by pre-commit (avoids accidental system python usage)
         language: python
-        additional_dependencies: ["ruff"]
-        files: "\\.py$"
+        additional_dependencies: ["ruff==0.13.0"]
+        types: [python]
+        pass_filenames: true
 
       - id: mypy
         name: mypy
-        entry: mypy --ignore-missing-imports
+        entry: mypy --config-file=pyproject.toml
         language: python
-        additional_dependencies: ["mypy"]
-        files: "\\.py$"
+        additional_dependencies: ["mypy==1.10.0"]
+        pass_filenames: false
 
       - id: pytest
         name: pytest
-        # run pytest as a module so the repository root is on sys.path and local package imports resolve
-        # ignore the repository pytest.ini here (-c /dev/null) and disable pytest-cov to avoid coverage file
-        # creation/combining which can be locked on Windows during pre-commit runs
-        entry: python -m pytest -q -p no:pytest_cov -c /dev/null
+        entry: python -m pytest -q
         language: python
-        additional_dependencies: ["pytest", "pytest-cov"]
-        files: ^tests/
+        additional_dependencies: ["pytest==8.2.2", "pytest-cov==4.0.0", "pytest-mock==3.11.0"]
+        pass_filenames: false

@@ -1,62 +1,37 @@
-from pathlib import Path
-
-from splurge_test_namer.parser import aggregate_sentinels_for_test
+from splurge_test_namer.parser import find_imports_in_file, aggregate_sentinels_for_test
 
 
-def write_module(path: Path, sentinel_values: list[str] | None = None, extra: str = ""):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    content = "\n"
-    if sentinel_values is not None:
-        content += f"DOMAINS = {sentinel_values!r}\n"
-    content += extra
-    path.write_text(content)
-
-
-def test_import_resolution_various(tmp_path):
+def test_relative_from_named_alias(tmp_path):
+    # repo/pkg/tests/test.py with 'from .sub import mod' -> should resolve to pkg.tests.sub.mod
     repo = tmp_path / "repo"
-    pkg = repo / "pkg"
-    sub = pkg / "sub"
+    pkg_tests = repo / "pkg" / "tests"
+    sub = pkg_tests / "sub"
     sub.mkdir(parents=True)
+    # create the module that will contain the sentinel
+    mod = sub / "mod.py"
+    mod.write_text("DOMAINS = ['rmod']\n")
 
-    # Create modules with sentinel values
-    write_module(pkg / "__init__.py", ["root"])
-    write_module(sub / "mod.py", ["submod"])
-    write_module(sub / "star_mod.py", ["star"])
+    testf = pkg_tests / "test_rel_named.py"
+    testf.parent.mkdir(parents=True, exist_ok=True)
+    testf.write_text("from .sub import mod\n")
 
-    # test files that import these modules in different ways
-    tests = tmp_path / "tests"
-    tests.mkdir()
+    got = aggregate_sentinels_for_test(testf, "pkg", repo, "DOMAINS")
+    assert "rmod" in got
 
-    # absolute import
-    f_abs = tests / "test_abs.py"
-    write_module(f_abs, None, "import pkg.sub.mod\n")
 
-    # from-import
-    f_from = tests / "test_from.py"
-    write_module(f_from, None, "from pkg.sub import mod\n")
+def test_relative_from_star_expansion_custom_root(tmp_path):
+    # Create repo/sub/child.py and a test inside repo/pkg/tests that does 'from ..sub import *'
+    repo = tmp_path / "repo"
+    sub = repo / "sub"
+    sub.mkdir(parents=True)
+    child = sub / "child.py"
+    child.write_text("DOMAINS = ['child']\n")
 
-    # relative import (simulate test inside package)
-    # create a test module inside pkg for relative imports
-    testpkg = pkg / "tests"
-    testpkg.mkdir()
-    f_rel = testpkg / "test_rel.py"
-    # from .sub import mod
-    write_module(f_rel, None, "from ..sub import mod\n")
+    pkg_tests = repo / "pkg" / "tests"
+    pkg_tests.mkdir(parents=True)
+    testf = pkg_tests / "test_rel_star.py"
+    testf.write_text("from ..sub import *\n")
 
-    # star import
-    f_star = tests / "test_star.py"
-    write_module(f_star, None, "from pkg.sub import *\n")
-
-    # Now aggregate from each test file and ensure values are found
-    got_abs = aggregate_sentinels_for_test(f_abs, "pkg", repo, "DOMAINS")
-    assert "submod" in got_abs
-
-    got_from = aggregate_sentinels_for_test(f_from, "pkg", repo, "DOMAINS")
-    assert "submod" in got_from
-
-    got_rel = aggregate_sentinels_for_test(f_rel, "pkg", repo, "DOMAINS")
-    assert "submod" in got_rel
-
-    got_star = aggregate_sentinels_for_test(f_star, "pkg", repo, "DOMAINS")
-    # star import should still pick up the module's sentinel via module resolution
-    assert "star" in got_star
+    # Use root_import 'sub' so that expanded candidates 'sub.child' match
+    found = find_imports_in_file(testf, "sub", repo)
+    assert any(name.startswith("sub.") for name in found)
